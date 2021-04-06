@@ -7,6 +7,6 @@ The objective is to calculate the sentiment score for the given cells and hence 
 Cluster and Cloud Computing Assignment 1
 
 
-1. json_analysis.py - contains the methods for reading the melbgrid , AFFIN, and the twitter data file. 
-                    - calculate_sentiment() method coputes the sentiment score of a given list of tweets. 
+1. json_analysis.py - contains the methods for reading the melbgrid , AFFIN, and the twitter data file.
+                    - calculate_sentiment() method computes the sentiment score of a given list of tweets. 
                     - Not MPI compatible yet.
