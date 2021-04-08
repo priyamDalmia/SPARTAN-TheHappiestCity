@@ -1,7 +1,8 @@
 
 import json
 from mpi4py import MPI
-
+import time
+start = time.clock()
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -39,6 +40,7 @@ def get_grid(grid, section_num):
 ##   - the grid sections where tweets belong to were finally identified.
 def process_tweet(grid,section_num):
     
+    #Rank 0 counts the number of lines in Twitter file
     if rank == 0:
         line_count = 0
         for line_count,line in enumerate(open("tinyTwitter.json","r")) :
@@ -47,18 +49,31 @@ def process_tweet(grid,section_num):
     else:
         line_count = None
 
-    ## This is where the allocation of processes happen. 
-    line_count = comm.bcast(line_count, root=0)
     
+    
+    ## This is where the allocation of processes begins. The twitter file will be divided into chunks and allocated into the cores.
+    ## The line_count will be used to determine how big each core will be processing.
+    line_count = comm.bcast(line_count, root=0)
     job_count = line_count/size
-    start_line = job_count * rank
-    end_line = start_line + job_count
+    start_line = round(job_count) * rank
+    end_line = 0
+
+    if rank == (size-1):
+        if (line_count % size) != 0:
+            remainder = 0
+            remainder = line_count % size
+            end_line = start_line + round(job_count) + remainder
+
+    else: 
+        end_line = start_line + round(job_count)
+
+
     end = False
     pointer = 0
 
     ## Open Twitter file. Each of the processes starts and ends at corresponding start_line/end_line in the smaller chunk of Twitter file
     with open("tinyTwitter.json", 'r') as twitter:
-     for line in twitter:
+        for line in twitter:
             pointer += 1
             while pointer > start_line and end == False:
                 if 'id' in line:
@@ -97,6 +112,12 @@ def main():
     grid,section_num = get_grid(grid,section_num)
     process_tweet(grid,section_num)
     print_result(grid,section_num)
+    if rank == 0:
+        user_elapsed = (time.clock() - start)
+        print ('\nTime elapsed:',user_elapsed)
+
     
  
 main()
+
+ 
