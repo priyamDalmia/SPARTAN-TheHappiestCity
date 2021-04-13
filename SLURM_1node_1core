@@ -1,6 +1,7 @@
 #The following SLURM is for running a batch script using 1 node and 1 core, under partition = snowy.
 
 #!/bin/bash
+#SBATCH --time=0-12:00:00
 #SBATCH --partition=snowy
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
