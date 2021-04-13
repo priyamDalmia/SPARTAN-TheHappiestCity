@@ -22,8 +22,8 @@ def main():
     print("responses from: ", response)
 
     #Parametrize inputs
-    melb_grid_file = 'melbGridv2.json'
-    twitter_file = 'smallTwitter.json'
+    melb_grid_file = 'melbGrid2.json'
+    twitter_file = 'bigTwitter.json'
 
     sum_scores, sum_tweets,line_count, labels = process_tweets(comm,my_rank,size,\
                                     twitter_file,melb_grid_file)
@@ -32,7 +32,7 @@ def main():
 
     if my_rank == 0:
         t.stop()
-        
+
 
 def get_melbGrid(melb_file):
     """Read melbGrid file and establish coordinates."""
@@ -47,13 +47,13 @@ def get_melbGrid(melb_file):
                 square = list((item['properties'].values()))
                 melb_grid.append(square)
                 labels.append(melb_grid[index][0])
-                
+
             #Create lists of X and Y coordinates to be used in identifying grid boundaries
             X_coords = []
             Y_coords = []
             for grid_box in melb_grid:
                 for i in range(1,3): #collecting min and max of x-coordinates and adding to list
-                    if grid_box[i] not in X_coords: 
+                    if grid_box[i] not in X_coords:
                         X_coords.append(grid_box[i])
                 for j in range(3,5): #collecting min and max of y-coordinates and adding to list
                     if grid_box[j] not in Y_coords:
@@ -63,7 +63,7 @@ def get_melbGrid(melb_file):
             X_coords = sorted(X_coords, key = lambda x:float(x))
             #print("X_coords ", X_coords)
             Y_coords = sorted(Y_coords, key = lambda x:float(x), reverse = True)
-            #print("Y_coords ", Y_coords)   
+            #print("Y_coords ", Y_coords)
 
     except FileNotFoundError:
         print("melbGrid2 file not found!")
@@ -84,115 +84,97 @@ def get_Afinn():
     return score_table
 
 
-def process_tweets(comm, my_rank, size, twitter_file,melb_grid_file):
+def process_tweets(comm, my_rank, p, twitter_file,melb_grid_file):
     """ Loads and processes twitter file line by line. """
-    
+
     melb_grid,X_coords,Y_coords,labels = get_melbGrid(melb_grid_file)
     score_table = get_Afinn()
 
     #Identify the respective indices on which each of the processes starts processing.
+    #Identify the respective indices on which each of the processes starts processing.
     try:
-        if my_rank == 0:
-            line_count = 0
-            for line_count,line in enumerate(open(twitter_file)) :
-                line_count += 1
-                pass
-        else:
-            line_count = None
-
-        line_count = comm.bcast(line_count, root=0) 
-        job_count, start_index, end_index = get_job_index(line_count, size, my_rank)
-
-        end = False
-        pointer = 0
         scores =[]
         tweets =[]
-       # calculated_cell = ""
+        index = 0
 
-        ## Open Twitter file. Each of the processes starts and ends at corresponding 
+        ## Open Twitter file. Each of the processes starts and ends at corresponding
         #   start_line/end_line in the smaller chunk of Twitter file
-        with open(twitter_file, 'r') as twitter:
-            for line in twitter:
-                pointer += 1
-                while pointer > start_index and end == False:
-                    if 'id' in line:
-                        coordinates = json.JSONDecoder().raw_decode(line)[0]['doc']\
-                            ['coordinates']['coordinates']
-                        #print("coordinates:", coordinates[0], " ", coordinates[1])
-                        
-                        # Case 1: when the tweet is not within max and min boundaries of 
-                        #   X and Y coordinates: to ignore tweet
-                        if coordinates[0] < min(X_coords) or coordinates[0] > max(X_coords) \
-                            or coordinates[1] < min(Y_coords) or coordinates[1] > max(Y_coords):
-                            pass
+        with open(twitter_file, 'r', encoding='utf-8') as fp:
+            for line in fp:
+                if index == 0:
+                    index+=1
+                    continue
 
-                        # Case 2: when the tweet is outside the whole grid boundaries, 
-                        # and within the hollow space under cells C1 and C2 and to the left of D3, 
-                        # as well as hollow space to the right of A4 and B4 and above C5
-                        elif (coordinates[0] < 145.00000 and coordinates[1] < -37.950000) or\
-                            (coordinates[0] > 145.300000 and coordinates[1] > -37.800000):
-                            pass
+                if index % p == my_rank:
+                    try:
+                        line = json.JSONDecoder().raw_decode(line)[0]
+                    except:
+                        continue
 
-                        # Case 3: when the tweet is within boundaries: Begin processing. 
-                        #      Each process/rank to process respective assigned lines from 
-                        #       json file. For each line:
-                        #           1. Get text element from each of the line.
-                        #           2. Identify grid cell to which the tweet belongs to.
-                        #           3. Count and sum sentiment score for each tweet.
-                        #           4. Append scores into a list of all scores within the process.
-                        else:
-                            tweet = json.JSONDecoder().raw_decode(line)[0]['value']\
-                                    ['properties']['text']
+                    coordinates = line['doc']['coordinates']['coordinates']
+                    #print("coordinates:", coordinates[0], " ", coordinates[1])
+
+                    # Case 1: when the tweet is not within max and min boundaries of
+                    #   X and Y coordinates: to ignore tweet
+                    if coordinates[0] < min(X_coords) or coordinates[0] > max(X_coords) \
+                        or coordinates[1] < min(Y_coords) or coordinates[1] > max(Y_coords):
+                        pass
+
+                    # Case 2: when the tweet is within boundaries: Begin processing.
+                    #      Each process/rank to process respective assigned lines from
+                    #       json file. For each line:
+                    #           1. Get text element from each of the line.
+                    #           2. Identify grid cell to which the tweet belongs to.
+                    #           3. Count and sum sentiment score for each tweet.
+                    #           4. Append scores into a list of all scores within the process.
+                    else:
+                        tweet = line['value']['properties']['text']
 
 
-                            calculated_cell = get_cell(melb_grid,coordinates, X_coords,Y_coords)
-                        
-                            #if calculated_cell == None:
-                            #   pass
-                            #else: 
-                            score,tweet_count = calculate_sentiment(tweet,calculated_cell,\
-                                        score_table,labels)
-                            
-                            #Counts total sentiment score for the tweet
-                            scores.append(list(score.values()))
+                        calculated_cell = get_cell(melb_grid,coordinates, X_coords,Y_coords)
 
-                            #Placeholder for the count of tweets, regardless of whether or not 
-                            #   the tweet has sentiment score
-                            tweets.append(list(tweet_count.values()))   
+                        score,tweet_count = calculate_sentiment(tweet,calculated_cell,\
+                                    score_table,labels)
 
-                    if pointer == end_index:
-                        end = True
-                    break
+                        #Counts total sentiment score for the tweet
+                        scores.append(list(score.values()))
+
+                        #Placeholder for the count of tweets, regardless of whether or not
+                        #   the tweet has sentiment score
+                        tweets.append(list(tweet_count.values()))
+
+                index+=1
 
         #Summing up totals within a process
-        sum_scores = [sum(i) for i in zip(*scores)]
-        sum_tweets = [sum(i) for i in zip(*tweets)]
+        scores = [sum(i) for i in zip(*scores)]
+        tweets = [sum(i) for i in zip(*tweets)]
         #print("Tweet counts:", tweets)
 
     except FileNotFoundError:
         print("File not found!")
 
-    #Gathering results at master level, rank = 0. 
-    sum_scores = comm.gather(sum_scores, root=0)
-    sum_tweets = comm.gather(sum_tweets, root=0)
+    #Gathering results at master level, rank = 0.
+    scores = comm.gather(scores, root = 0)
+    tweets = comm.gather(tweets, root=0)
 
-    return sum_scores, sum_tweets, line_count, labels
+
+    return scores, tweets, index, labels
 
 
 def get_job_index(line_count,size,my_rank):
-    """ Determine job indices for each process to be used for breaking down tasks 
+    """ Determine job indices for each process to be used for breaking down tasks
         of reading and processing twitter file into smaller chunks"""
 
     job_count = line_count/size
     start_index = round(job_count) * my_rank
     end_index = 0
 
-    if my_rank == (size-1):  
+    if my_rank == (size-1):
         if (line_count % size) != 0:
-            remainder = 0 
+            remainder = 0
             remainder = line_count % size
             end_index = start_index + round(job_count) + remainder
-    else: 
+    else:
         end_index = start_index + round(job_count)
 
     return  job_count, start_index,end_index
@@ -200,14 +182,14 @@ def get_job_index(line_count,size,my_rank):
 
 def calculate_sentiment(tweet,calculated_cell,score_table,labels):
     """Calculation of Sentiment score for each tweet"""
-    
+
     #Initialize score dictionary where scores will be collected
     i_score = [0 for i in range(len(labels))]
     score_dict = dict(zip(labels, i_score))
 
     j_score = [0 for i in range(len(labels))]
     tweet_count = dict(zip(labels, j_score))
-    
+
     tweet_score = 0
 
     #Regex pattern for exact matches
@@ -226,9 +208,11 @@ def calculate_sentiment(tweet,calculated_cell,score_table,labels):
 
     #print("calculated cell:", calculated_cell)
     # Recording tweet sentiment scores in score dictionary
-    score_dict[calculated_cell] = score_dict.get(calculated_cell) + tweet_score
+    if calculated_cell in labels:
+        score_dict[calculated_cell] = score_dict.get(calculated_cell) + tweet_score
     #print("score_dict[calc cell]:",  score_dict[calculated_cell])
-    tweet_count[calculated_cell] = tweet_count.get(calculated_cell) + 1
+    if calculated_cell in labels:
+        tweet_count[calculated_cell] = tweet_count.get(calculated_cell) + 1
     #print("tweet_count[calculated_cell]",tweet_count[calculated_cell] )
 
 
@@ -245,7 +229,7 @@ def get_cell(melb_grid, coordinates, X_coords,Y_coords):
     list_match = []
     cell = ""
 
-    # Case 1: tweet lies ALONG the boundaries on any cell; 
+    # Case 1: tweet lies ALONG the boundaries on any cell;
     #       If so, the tweet score will be added either to the left and/or the below adjacent cell
     if coordinates[0] in X_coords or coordinates[1] in Y_coords:
         for grid_box in melb_grid:
@@ -265,7 +249,7 @@ def get_cell(melb_grid, coordinates, X_coords,Y_coords):
         elif(len(list_match)==3):
             cell = sorted(list_match, reverse = False)[0]
 
-        #case 1.2 - when the tweet point lies ALONG the boundary connecting 2 grid cells: 
+        #case 1.2 - when the tweet point lies ALONG the boundary connecting 2 grid cells:
         #       select either left and/or below cell
         elif len(list_match) == 2:
             if list_match[0][1] == list_match[1][1]: #comparison between top and bottom boxes
@@ -273,16 +257,16 @@ def get_cell(melb_grid, coordinates, X_coords,Y_coords):
             elif list_match[0][0] == list_match[1][0]:  #comparison between left and right boxes
                 cell = min(sorted(list_match, reverse = False))
         elif len(list_match) == 1:
-            cell = list_match[0] 
+            cell = list_match[0]
 
     #Case 2: when the point doesn't lie on the grid lines but lies within each cell
-    else: 
+    else:
         cell = (grid_rows[sum([1 if coordinates[1] < i else 0 for i in Y_coords])]
             + str(sum([1 if coordinates[0] > i else 0 for i in X_coords])))
-    
+
     #for example: coordiztes[1] = -37.51
     #print("Tweet Cell ", cell)
-    #To test, point [144.9,-37.8] should lie on C2 and not B2 
+    #To test, point [144.9,-37.8] should lie on C2 and not B2
 
     return cell
 
