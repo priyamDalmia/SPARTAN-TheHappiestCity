@@ -253,7 +253,7 @@ def get_cell(melb_grid, coordinates, X_coords,Y_coords):
              and (coordinates[0] >= grid_box[1] and coordinates[0] <= grid_box[2]):
                 list_match.append(grid_box[0]) #id
 
-        print(list_match)
+        #print(list_match)
 
         #case 1.1 - when the tweet point lies ON the intersecting points of 4 cells
         if(len(list_match)>2): #matches 4 grid boxes
