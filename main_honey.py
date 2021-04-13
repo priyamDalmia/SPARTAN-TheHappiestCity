@@ -23,7 +23,7 @@ def main():
 
     #Parametrize inputs
     melb_grid_file = 'melbGridv2.json'
-    twitter_file = 'tinyTwitter.json'
+    twitter_file = 'smallTwitter.json'
 
     sum_scores, sum_tweets,line_count, labels = process_tweets(comm,my_rank,size,\
                                     twitter_file,melb_grid_file)
@@ -107,7 +107,7 @@ def process_tweets(comm, my_rank, size, twitter_file,melb_grid_file):
         pointer = 0
         scores =[]
         tweets =[]
-        calculated_cell = 0
+       # calculated_cell = ""
 
         ## Open Twitter file. Each of the processes starts and ends at corresponding 
         #   start_line/end_line in the smaller chunk of Twitter file
@@ -147,18 +147,18 @@ def process_tweets(comm, my_rank, size, twitter_file,melb_grid_file):
 
                             calculated_cell = get_cell(melb_grid,coordinates, X_coords,Y_coords)
                         
-                            if calculated_cell == None:
-                                pass
-                            else: 
-                                score,tweet_count = calculate_sentiment(tweet,calculated_cell,\
+                            #if calculated_cell == None:
+                            #   pass
+                            #else: 
+                            score,tweet_count = calculate_sentiment(tweet,calculated_cell,\
                                         score_table,labels)
                             
                             #Counts total sentiment score for the tweet
-                                scores.append(list(score.values()))
+                            scores.append(list(score.values()))
 
                             #Placeholder for the count of tweets, regardless of whether or not 
                             #   the tweet has sentiment score
-                                tweets.append(list(tweet_count.values()))   
+                            tweets.append(list(tweet_count.values()))   
 
                     if pointer == end_index:
                         end = True
@@ -256,8 +256,14 @@ def get_cell(melb_grid, coordinates, X_coords,Y_coords):
         #print(list_match)
 
         #case 1.1 - when the tweet point lies ON the intersecting points of 4 cells
-        if(len(list_match)>2): #matches 4 grid boxes
-            cell = sorted(list_match, reverse = False)[3]
+        # select the left-below cell
+        if(len(list_match)==4): #matches 4 grid boxes
+            cell = sorted(list_match, reverse = False)[2]
+
+        #case 1.2 - when the tweet point lies either ON intersecting points of B4,C4, C5
+        # or ON intersecting points of C2, C3, D3 -- ASSUME tweet belongs to LEFT box
+        elif(len(list_match)==3):
+            cell = sorted(list_match, reverse = False)[0]
 
         #case 1.2 - when the tweet point lies ALONG the boundary connecting 2 grid cells: 
         #       select either left and/or below cell
@@ -274,7 +280,7 @@ def get_cell(melb_grid, coordinates, X_coords,Y_coords):
         cell = (grid_rows[sum([1 if coordinates[1] < i else 0 for i in Y_coords])]
             + str(sum([1 if coordinates[0] > i else 0 for i in X_coords])))
     
-    #for example: coordinztes[1] = -37.51
+    #for example: coordiztes[1] = -37.51
     #print("Tweet Cell ", cell)
     #To test, point [144.9,-37.8] should lie on C2 and not B2 
 
@@ -294,7 +300,7 @@ def print_results(my_rank,line_count,sum_scores,sum_tweets,labels):
         tweets_total_dict = dict(zip(labels,tweets_total_count))
         print("Cells: \t", "Total Tweets: \t", "Overall Sentiment Score:")
         for label in labels:
-            print(label,"\t\t", tweets_total_dict.get(label),"\t\t",total_score_dict.get(label),)
+            print(label,"\t\t", tweets_total_dict.get(label),"\t\t",total_score_dict.get(label))
         max_city = max(total_score_dict,key = total_score_dict.get)
 
         print("Happiest City is: ", max_city, ", highest score:", max(total_score_dict.values()))
